@@ -1,0 +1,6 @@
+- add some graphic primitives in a separate class (GDI-like) that would use MAX7219 as a display driver
+- related to the above, implement spectrum analyzer specifics for bargraph mode (decay, peaks)
+- add HAL support (shift register routing for LOAD/#CS) to the code
+- add SPI arbitrator support
+- implement external element controllers, mainly for animations ticked off from loop(). Rotating dash, spinning zero and scanning bargraph come to mind. Blinking cursor (on matrices) also seems like a good candidate.
+- implement rotation for driving opposite polarity displays (i.e. common anode)
