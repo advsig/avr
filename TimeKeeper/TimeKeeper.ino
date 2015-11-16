@@ -113,7 +113,8 @@ void loop()
     HzTick = 0;
     secTick();
   }
-  
+
+  /* check for button press */
   if (but == 0) {
     return;
   }
@@ -165,6 +166,7 @@ void startTask(uint8_t ival, uint8_t bp)
   prtTime();
 }
 
+/* called from loop() every second */
 void secTick()
 {
   sTimers[curState] += 1;
@@ -220,6 +222,7 @@ void toglPause(uint8_t rv)
   }
 }
 
+/* read time from RTC, print current time and counters for Task & IDLE */
 void prtTime()
 {
   tmElements_t tm;
