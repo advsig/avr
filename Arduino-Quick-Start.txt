@@ -1,0 +1,27 @@
+David,
+
+Enclosed is an Arudino Nano and a 4-digit LED display.
+The description of the Nano is found here: https://www.arduino.cc/en/Main/ArduinoBoardNano
+
+You will need to install the Arduino IDE on your computer: https://www.arduino.cc/en/Main/Software
+This should also install the device drivers for the Arudino automatically -- though these should already be present with recent versions of Windows and Linux.
+
+You will need to figure out what serial port your computer assigns to the Arduino and configure the software to use the assigned serial port, and set the board type "Arudino Mini".
+
+The LED module is described here: http://www.seeedstudio.com/wiki/Grove_-_4-Digit_Display
+
+Follow the instructions in the Arudino tutorial on how to connect the LED module to Arduino, and how to install the driver library into your development environment.
+https://www.arduino.cc/en/Guide/Libraries
+
+You can solder the square pins onto the Arudino for using the jumper cables for prototyping, or leave them off if you want to solder the Arduino into a permanent installation.
+
+Make sure you use a temperature-controlled low-wattage ESD-safe soldering iron in an ESD-safe environment when soldering the boards.
+
+The Arduino analog inputs have an input range of 0-5v, the "Analog Read" function returns an integer from 0-1024 (10 bits) proportional to the voltage.  I have included some 3.3v zener diodes that you should use to protect the inputs if you can't guarantee the input will always be within acceptable parameters.
+
+The digital outputs of the Arduino can sink or source up to 40ma.
+
+The digital inputs can tolerate up to 5v.  I have included a 74H541 buffer if you need to interface to higher voltages.
+
+Good luck, I wish you luck in your project. 
+ 
