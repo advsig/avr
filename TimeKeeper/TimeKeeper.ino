@@ -31,7 +31,9 @@ const uint8_t DefTaskTime = 20; // minutes
 
 void setup()
 {
-  Serial.begin(115200);
+  if (Serial) {
+    Serial.begin(115200);
+  }
   lcd.begin(16,2);               // initialize the lcd 
   
   /* test to see if expander is active */
