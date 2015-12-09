@@ -1,18 +1,18 @@
 #include <TimeAlarms.h>
 #include <Time.h>
-#include <DS3231RTC.h>
+#include <DS3232RTC.h>
 #include <LiquidCrystal_I2C.h>
 #include <pcf8574.h>
 #include <Wire.h>
 #include <shine.h>
+#include <EEPROM.h>
 
 /* Globals */
 // adjust addresses if needed
 PCF8574 PCF(0x21);        // add switches to lines  (used as input)
 LiquidCrystal_I2C lcd(0x22, 16, 2);  // Set the LCD I2C address
 volatile uint8_t but, HzTick, rtci;
-long tzOffset;
-bool DST;
+bool DST = false;
 
 /* mask for PCF8574 */
 uint8_t xmask;
@@ -23,18 +23,30 @@ uint16_t tTask;    /* timer task countdown */
 /* 8474 Pin assignments */
 enum pcfP { YEL, BLU, RED, GRE, BUZ, BUT1, BUT2, BUT3, DEF = 0xE7 };
 /* Timer States */
-enum Tstates {IDLEX, TASK, INTERRUPT, PAUSE};
+enum Tstates {IDLEX, TASK, INTERRUPT, WORKING};
 uint8_t curState;
 uint16_t sTimers[4];
-uint16_t secs;
-const uint8_t DefTaskTime = 20; // minutes
+uint16_t secs = 0;
+uint8_t DefTaskTime; // minutes
+bool Working = false;
+
+String dispStr;
+/* EEPROM Addresses for persistent data */
+enum eeAddr {
+  tTimeOff
+};
 
 void setup()
 {
   if (Serial) {
     Serial.begin(115200);
   }
-  lcd.begin(16,2);               // initialize the lcd 
+  lcd.begin(16, 2);              // initialize the lcd
+  dispStr.reserve(17);           // for host comms
+  memset(&sTimers, 0, sizeof(sTimers)); // clear timers
+  RTC.squareWave(SQWAVE_NONE);
+  RTC.alarmInterrupt(ALM2_EVERY_MINUTE, true);
+  RTC.alarm(ALM2_EVERY_MINUTE);
   
   /* test to see if expander is active */
   uint8_t value = PCF.read8();
@@ -45,32 +57,33 @@ void setup()
   xmask = DEF;
   PCF.write8(xmask);
 
- /* set up int0 to handle RTC alarm interrupt */
+  /* set up int0 to handle RTC alarm interrupt */
   pinMode(2, INPUT);
   attachInterrupt(0, RTCAlarm, FALLING);
-  
- /* set up int1 to handle expander interrupt */
+
+  /* set up int1 to handle expander interrupt */
   pinMode(3, INPUT);
   attachInterrupt(1, button, FALLING);
 
-  /* enable ICP1 as input, will use for 32KHz clock input */
+  /* enable T0 as input, will use for 32KHz clock input */
   pinMode(5, INPUT);
-  
+
   but = 0;
-  secs = 0;
-  
+  rtci = 0;
+
   setSyncProvider(RTC.get);
   lcd.backlight();
   setT1();
   //tTimer = Alarm.timerRepeat(1, secTick);
   ledInit();
   curState = IDLEX;
-  DST = true;
-  tzOffset = 3600L * (DST) ? 7L : 8L;
   prtTime();
+  /* get defaults */
+  DefTaskTime = EEPROM.read(tTimeOff);
   setLed(GRE, 1);
 }
 
+/* timer T1, rolls over at 32K. Counts seconds */
 void setT1()
 {
   cli();
@@ -82,7 +95,7 @@ void setT1()
   // turn on CTC mode
   TCCR1B |= (1 << WGM12);
   // Set CS12 and CS11 for T1 falling edge count
-  TCCR1B |= (1 << CS12) | (1 << CS11);  
+  TCCR1B |= (1 << CS12) | (1 << CS11);
   // enable timer compare interrupt
   TIMSK1 |= (1 << OCIE1A);
   sei();
@@ -104,23 +117,63 @@ void RTCAlarm()
 {
   /* Falling edge from RTC alarm */
   rtci++;
+  RTC.alarm(ALM2_EVERY_MINUTE);
 }
 
 void loop()
 {
   uint8_t rv;
   Alarm.delay(10);
-  
+
   if (HzTick) {
     HzTick = 0;
     secTick();
   }
 
-  /* check for button press */
+  /* check for time sync, display message */
+  if (Serial.available())
+  {
+    char c = Serial.peek();
+    switch (c) {
+
+      case 'T':
+        processSyncMessage();
+        break;
+
+      case 'D':
+        Serial.read();
+        dispStr = Serial.readStringUntil('\r');
+        DefTaskTime = atoi(dispStr.c_str());
+        EEPROM.write(tTimeOff, DefTaskTime);
+        break;
+
+      case 'I':
+        Serial.setTimeout(5000);
+        Serial.read();  // toss init char
+        dispStr = Serial.readStringUntil('\r');
+        lcd.setCursor(0, 1);
+        int i;
+        for (i = 0; i < dispStr.length(); i++) {
+          lcd.print(dispStr[i]);
+        }
+        break;
+
+      default:
+        Serial.read();
+
+    }
+  }
+
+  if (rtci) { /* RTC interrupts */
+    rtci = 0;
+    Serial.print('T');
+  }
+
+  /* check for button press, nothing get processed after this line */
   if (but == 0) {
     return;
   }
-  
+
   rv = PCF.read8();
 
   but = 0;
@@ -129,15 +182,20 @@ void loop()
   if (bitRead(rv, BUT1) == 0) {
     startTask(DefTaskTime, rv);
   }
-  
+
   if (bitRead(rv, BUT2) == 0) {
     toglInterrupt(rv);
   }
-  
+
   if (bitRead(rv, BUT3) == 0) {
-    //toglPause(rv);
-    endTask();
+    if (curState == TASK) {
+      endTask();
+    } else {
+      toglPause(rv);
+    }
   }
+
+
 }
 
 void endTask()
@@ -158,8 +216,7 @@ void startTask(uint8_t ival, uint8_t bp)
   tTask = ival * 60;
   sTimers[TASK] = 0;
   sTimers[IDLEX] = 0;
-  secs = 0;
- 
+
   // light Blue Led
   setLed(BLU, 1);
   setLed(GRE, 0);
@@ -172,25 +229,28 @@ void startTask(uint8_t ival, uint8_t bp)
 void secTick()
 {
   sTimers[curState] += 1;
-  //Serial.print('T');
+  if (Working) {
+    sTimers[WORKING]++;
+  }
+  //Serial.println('T');
   switch (curState) {
     case IDLEX:
-      if (sTimers[IDLEX] > 15*60) {
+      if (sTimers[IDLEX] > 15 * 60) {
         lcd.noBacklight();
       }
-    break;
+      break;
     case TASK:
       if (sTimers[TASK] >= tTask) {
         /* task expired */
         endTask();
       }
-    break;
+      break;
     case INTERRUPT:
-    break;
-    case PAUSE:
-    break;
+      break;
+    case WORKING:
+      break;
   }
-  
+
 
   secs++;
   if ((secs % 60) == 0) {
@@ -215,12 +275,12 @@ void toglInterrupt(uint8_t rv)
 
 void toglPause(uint8_t rv)
 {
-  if (curState == TASK) {
+  if (!Working) {
     setLed(YEL, 1);
-    curState = PAUSE;
-  } else if (curState == PAUSE && tTask) {
+    Working = true;
+  } else {
     setLed(YEL, 0);
-    curState = TASK;
+    Working = false;
   }
 }
 
@@ -230,19 +290,29 @@ void prtTime()
   tmElements_t tm;
   RTC.read(tm);
   time_t t = makeTime(tm);
+  secs = tm.Second;
   uint8_t i;
-  
+
   // Adjust for DST, GMT -8
-  bool dst = false;
-  long offset = 8L;
-  t -= 3600L * offset ;
+
+  t -=  ((DST) ? 7UL : 8UL) * 3600UL;
+
   breakTime(t, tm);
   char buf[17];
-  
+
   uint8_t Talarm = (tTask - sTimers[TASK]) / 60;
-  uint8_t Tinterrupt = sTimers[INTERRUPT] / 60;
-  sprintf(buf, "%02d:%02d T%02d I%02d", tm.Hour, tm.Minute, Talarm, Tinterrupt);
-  lcd.setCursor(0,0);
+  uint8_t Tinterrupt = sTimers[INTERRUPT] / 60UL;
+  uint8_t wHr = sTimers[WORKING] / 3600UL;
+  uint8_t wMn = (sTimers[WORKING] / 60UL) % 60;
+
+  /* reset working timer at midnight */
+  if (tm.Hour == 0 && tm.Minute == 0)
+  {
+    sTimers[WORKING] = 0;
+  }
+  
+  sprintf(buf, "%02d/%02d W%02d:%02d", tm.Month, tm.Day, wHr , wMn);
+  lcd.setCursor(0, 0);
   /* strange. As of 1.6.6, lcd.print doesn't work with char[] arrays, so send them one at a time */
   for (i = 0; buf[i]; i++) {
     lcd.print(buf[i]);
@@ -259,9 +329,9 @@ void prtTime()
 
 void beepit(uint8_t len)
 {
-   PCF.write8(xmask | (1<<BUZ));
-   Alarm.delay(len);
-   PCF.write8(xmask);
+  PCF.write8(xmask | (1 << BUZ));
+  Alarm.delay(len);
+  PCF.write8(xmask);
 }
 
 void setLed(uint8_t led, uint8_t state)

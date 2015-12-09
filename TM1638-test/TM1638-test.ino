@@ -6,12 +6,16 @@ TM1638 module(11, 13, 10);
 
 void setup() {
   // display a hexadecimal number and set the left 4 dots
-  setTime(14, 05, 00, 13, 9, 2015);
+  Serial.begin(115200);
 }
 
 void loop() {
   unsigned long timeStr;
   byte dots;
+  if (Serial.available() > 10)
+  {
+    processSyncMessage();
+  }
   timeStr =  day() + month()*100;
   timeStr = timeStr*100 + hour();
   timeStr = timeStr*100 + minute();
