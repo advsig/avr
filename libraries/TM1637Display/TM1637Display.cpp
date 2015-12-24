@@ -120,6 +120,9 @@ void TM1637Display::showNumberDec(int num, bool leading_zero, uint8_t length, ui
 			num -= d * divisor;
 			leading = false;
 		}
+		if (k == 1) {
+		   digits[k] |= 0x80;	// light colon
+		}
 	}
 	
 	setSegments(digits + (4 - length), length, pos);
