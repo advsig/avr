@@ -1,0 +1,23 @@
+#	Author:		Eric Conner
+#	Email:		Eric@EricConnerApps.com
+#	Date:		06-10-2013
+#	Project:	ATmega32 for Arduino IDE
+#	Version:	v1.2
+
+
+##############################################################
+
+mega32-16.name=ATmega32-External 16mhz
+mega32-16.build.mcu=atmega32
+mega32-16.build.f_cpu=16000000L
+mega32-16.build.core=arduino:arduino
+mega32-16.build.variant=mega32
+
+mega32-16.upload.tool=avrdude
+mega32-16.upload.maximum_size=32000
+
+mega32-16.bootloader.low_fuses=0xEF
+mega32-16.bootloader.high_fuses=0x89
+#mega32-16.bootloader.extended_fuses=0xFD
+
+##############################################################
