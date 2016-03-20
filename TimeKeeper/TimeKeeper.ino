@@ -82,6 +82,7 @@ void setup()
   /* get defaults */
   DefTaskTime = EEPROM.read(tTimeOff);
   setLed(GRE, 1);
+  sei();
 }
 
 /* timer T1, rolls over at 32K. Counts seconds */
@@ -167,7 +168,7 @@ void loop()
 
   if (rtci) { /* RTC interrupts */
     rtci = 0;
-    Serial.print('T');
+    //Serial.print('T');
   }
 
   /* check for button press, nothing get processed after this line */
